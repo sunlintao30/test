@@ -61,25 +61,35 @@
 
 仓库地址：https://github.com/sunlintao30/test
 
-### 方式一：在线一键运行（推荐）
+### 方式一：下载后执行（推荐，最稳定）
 
-无需克隆仓库，直接执行主菜单脚本。主脚本会自动检测本地是否存在分支脚本：本地存在则本地执行，不存在则从在线地址下载到临时文件执行。
+先下载主脚本到本地再执行，确保交互式菜单正常工作：
 
 ```bash
-# curl 方式
+# GitHub 源
+curl -fsSL https://raw.githubusercontent.com/sunlintao30/test/main/main.sh -o /tmp/main.sh
+chmod +x /tmp/main.sh && sudo /tmp/main.sh
+
+# 国内加速源（GitHub 访问慢时使用）
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/sunlintao30/test/main/main.sh -o /tmp/main.sh
+chmod +x /tmp/main.sh && sudo /tmp/main.sh
+```
+
+### 方式二：管道一键运行
+
+管道方式下，主脚本会自动检测并下载到本地后执行，确保交互式菜单可用：
+
+```bash
+# GitHub 源
 curl -fsSL https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
 
-# wget 方式
-wget -qO- https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
+# 国内加速源
+curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
 ```
 
-单独运行某个分支脚本（以系统优化为例）：
+> 说明：管道执行时脚本会自动下载到 `/tmp/ops_main.sh` 并在新的终端环境中运行，带超时和国内加速源自动切换。
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sunlintao30/test/main/linux_optimize.sh | sudo bash
-```
-
-### 方式二：本地克隆运行
+### 方式三：本地克隆运行
 
 ```bash
 # 1. 克隆仓库

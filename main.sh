@@ -6,49 +6,75 @@
 #       curl -fsSL <RAW_URL>/main.sh | sudo bash  （管道方式也支持交互）
 #=============================================================================
 
-# 管道执行（curl|bash）时 stdin 被脚本内容占用，需要从终端获取用户输入
+# 管道执行（curl|bash）时 stdin 被脚本内容占用，交互式菜单无法正常输入
+# 检测到管道模式时，自动下载脚本到本地并在新的终端环境中执行
 # 交互式菜单脚本不使用 set -e，避免 read 偶发返回非 0 时误退出
-# 检测执行模式并自动处理：管道模式下自动下载到临时文件再执行
 detect_and_run() {
     if [[ -t 0 ]]; then
         return 0
     fi
 
-    if [[ -c /dev/tty ]]; then
-        exec 0</dev/tty
-        return 0
-    fi
+    cat <<'HEADER'
+
+================================================
+服务器运维脚本工具集
+================================================
+
+检测到管道执行模式（curl | bash），正在为您准备交互式环境...
+HEADER
+
+    local tmp_script="/tmp/ops_main.sh"
+    local script_url="https://raw.githubusercontent.com/sunlintao30/test/main/main.sh"
+    local mirror_url="https://mirror.ghproxy.com/https://raw.githubusercontent.com/sunlintao30/test/main/main.sh"
+    local downloaded=0
 
     echo ""
-    echo "================================================"
-    echo "检测到管道执行模式，正在下载脚本..."
-    echo "================================================"
-    echo ""
-
-    local tmp_script=$(mktemp "/tmp/main_XXXXXX.sh")
-    local downloader=""
-    
+    echo "正在下载脚本（GitHub 源）..."
     if command -v curl &>/dev/null; then
-        downloader="curl -fsSL"
+        if curl -fsSL --connect-timeout 10 --max-time 30 "$script_url" -o "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+            downloaded=1
+        else
+            echo "GitHub 源下载超时，尝试国内加速源..."
+            if curl -fsSL --connect-timeout 10 --max-time 30 "$mirror_url" -o "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+                downloaded=1
+            fi
+        fi
     elif command -v wget &>/dev/null; then
-        downloader="wget -qO-"
+        if wget -q --timeout=10 --tries=1 "$script_url" -O "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+            downloaded=1
+        else
+            echo "GitHub 源下载超时，尝试国内加速源..."
+            if wget -q --timeout=10 --tries=1 "$mirror_url" -O "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+                downloaded=1
+            fi
+        fi
     else
-        echo "错误：未找到 curl 或 wget"
+        echo "错误：未找到 curl 或 wget，请先安装后再运行"
         exit 1
     fi
 
-    local script_url="https://raw.githubusercontent.com/sunlintao30/test/main/main.sh"
-    if $downloader "$script_url" > "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+    if [[ $downloaded -eq 1 ]]; then
         chmod +x "$tmp_script"
-        echo "下载成功，正在执行..."
+        echo "下载完成，正在启动主菜单..."
         echo ""
         exec bash "$tmp_script" "$@"
     else
-        echo "下载失败，请手动下载后执行："
-        echo ""
-        echo "  curl -fsSL $script_url -o /tmp/main.sh"
-        echo "  chmod +x /tmp/main.sh && sudo /tmp/main.sh"
-        rm -f "$tmp_script"
+        cat <<EOF
+
+下载失败，请使用以下任一方式运行：
+
+方式一：下载后执行（推荐）
+  curl -fsSL $script_url -o /tmp/main.sh
+  chmod +x /tmp/main.sh && sudo /tmp/main.sh
+
+方式二：国内加速地址
+  curl -fsSL $mirror_url -o /tmp/main.sh
+  chmod +x /tmp/main.sh && sudo /tmp/main.sh
+
+方式三：本地克隆
+  git clone https://github.com/sunlintao30/test.git ~/ops-scripts
+  cd ~/ops-scripts && chmod +x *.sh && sudo ./main.sh
+EOF
         exit 1
     fi
 }
@@ -92,15 +118,42 @@ check_root() {
     fi
 }
 
-#-------------------- 下载工具检测 --------------------
-pick_downloader() {
-    if command -v curl &>/dev/null; then
-        DOWNLOADER="curl -fsSL"
-    elif command -v wget &>/dev/null; then
-        DOWNLOADER="wget -qO-"
-    else
-        DOWNLOADER=""
+#-------------------- 下载文件（带超时和国内加速） --------------------
+# 参数：$1=URL  $2=保存路径
+# 返回：0成功 1失败
+download_file() {
+    local url="$1"
+    local output="$2"
+    local mirror_url=""
+
+    # 如果是 GitHub raw，生成国内加速地址
+    if [[ "$url" == *"raw.githubusercontent.com"* ]]; then
+        mirror_url="https://mirror.ghproxy.com/${url}"
     fi
+
+    if command -v curl &>/dev/null; then
+        if curl -fsSL --connect-timeout 10 --max-time 30 "$url" -o "$output" 2>/dev/null && [[ -s "$output" ]]; then
+            return 0
+        elif [[ -n "$mirror_url" ]]; then
+            warn "GitHub 源下载慢，尝试国内加速源..."
+            if curl -fsSL --connect-timeout 10 --max-time 30 "$mirror_url" -o "$output" 2>/dev/null && [[ -s "$output" ]]; then
+                ok "国内加速源下载成功"
+                return 0
+            fi
+        fi
+    elif command -v wget &>/dev/null; then
+        if wget -q --timeout=10 --tries=1 "$url" -O "$output" 2>/dev/null && [[ -s "$output" ]]; then
+            return 0
+        elif [[ -n "$mirror_url" ]]; then
+            warn "GitHub 源下载慢，尝试国内加速源..."
+            if wget -q --timeout=10 --tries=1 "$mirror_url" -O "$output" 2>/dev/null && [[ -s "$output" ]]; then
+                ok "国内加速源下载成功"
+                return 0
+            fi
+        fi
+    fi
+
+    return 1
 }
 
 #-------------------- 调用分支脚本 --------------------
@@ -125,8 +178,7 @@ run_script() {
         $SUDO "$local_path" || warn "$script 退出（code=$?）"
     else
         # 情况 2：本地不存在，从在线地址下载执行
-        pick_downloader
-        if [[ -z "$DOWNLOADER" ]]; then
+        if ! command -v curl &>/dev/null && ! command -v wget &>/dev/null; then
             error "未找到 curl 或 wget，无法下载 $script"
             info "请先安装：apt install -y curl wget"
             return 1
@@ -134,14 +186,14 @@ run_script() {
 
         info "本地未找到 ${script}，从在线地址下载..."
         info "${CYAN}${remote_url}${NC}"
-        sep
         echo ""
 
         # 下载到临时文件并执行
         local tmp_script
         tmp_script=$(mktemp "/tmp/${script%.sh}.XXXXXX.sh")
-        if $DOWNLOADER "$remote_url" > "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+        if download_file "$remote_url" "$tmp_script"; then
             chmod +x "$tmp_script"
+            sep
             info "启动 ${BOLD}${script}${NC} ${BLUE}（在线）${NC} ..."
             sep
             echo ""
