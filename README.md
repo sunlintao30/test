@@ -59,11 +59,39 @@
 
 ## 快速开始
 
+仓库地址：https://github.com/sunlintao30/test
+
+### 方式一：在线一键运行（推荐）
+
+无需克隆仓库，直接执行主菜单脚本。主脚本会自动检测本地是否存在分支脚本：本地存在则本地执行，不存在则从在线地址下载到临时文件执行。
+
 ```bash
-# 1. 赋予执行权限
+# curl 方式
+curl -fsSL https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
+
+# wget 方式
+wget -qO- https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
+```
+
+单独运行某个分支脚本（以系统优化为例）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sunlintao30/test/main/linux_optimize.sh | sudo bash
+```
+
+### 方式二：本地克隆运行
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/sunlintao30/test.git ~/ops-scripts && cd ~/ops-scripts
+
+# 2. 赋予执行权限
 chmod +x *.sh
 
-# 2. 以 root 权限运行所需脚本（以系统优化为例）
+# 3. 以 root 权限运行主菜单（统一入口）
+sudo ./main.sh
+
+# 也可直接运行单个分支脚本（以系统优化为例）
 sudo ./linux_optimize.sh
 ```
 
