@@ -8,36 +8,52 @@
 
 # 管道执行（curl|bash）时 stdin 被脚本内容占用，需要从终端获取用户输入
 # 交互式菜单脚本不使用 set -e，避免 read 偶发返回非 0 时误退出
-# 检查终端可用性，给出友好提示
-check_tty() {
-    if [[ ! -t 0 ]]; then
-        if [[ -c /dev/tty ]]; then
-            exec 0</dev/tty
-        else
-            cat >&2 <<EOF
-===============================================
-错误：当前环境不支持交互模式
-===============================================
-您使用的是管道方式执行（curl|bash），但当前环境无法访问终端。
+# 检测执行模式并自动处理：管道模式下自动下载到临时文件再执行
+detect_and_run() {
+    if [[ -t 0 ]]; then
+        return 0
+    fi
 
-解决方案：
-1. 使用本地运行方式：
-   git clone https://github.com/sunlintao30/test.git ~/ops-scripts
-   cd ~/ops-scripts && chmod +x *.sh && sudo ./main.sh
+    if [[ -c /dev/tty ]]; then
+        exec 0</dev/tty
+        return 0
+    fi
 
-2. 或使用支持终端的环境（如 SSH 连接、本地终端）
+    echo ""
+    echo "================================================"
+    echo "检测到管道执行模式，正在下载脚本..."
+    echo "================================================"
+    echo ""
 
-3. 或使用国内加速地址：
-   curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
+    local tmp_script=$(mktemp "/tmp/main_XXXXXX.sh")
+    local downloader=""
+    
+    if command -v curl &>/dev/null; then
+        downloader="curl -fsSL"
+    elif command -v wget &>/dev/null; then
+        downloader="wget -qO-"
+    else
+        echo "错误：未找到 curl 或 wget"
+        exit 1
+    fi
 
-===============================================
-EOF
-            exit 1
-        fi
+    local script_url="https://raw.githubusercontent.com/sunlintao30/test/main/main.sh"
+    if $downloader "$script_url" > "$tmp_script" 2>/dev/null && [[ -s "$tmp_script" ]]; then
+        chmod +x "$tmp_script"
+        echo "下载成功，正在执行..."
+        echo ""
+        exec bash "$tmp_script" "$@"
+    else
+        echo "下载失败，请手动下载后执行："
+        echo ""
+        echo "  curl -fsSL $script_url -o /tmp/main.sh"
+        echo "  chmod +x /tmp/main.sh && sudo /tmp/main.sh"
+        rm -f "$tmp_script"
+        exit 1
     fi
 }
 
-check_tty
+detect_and_run "$@"
 
 #-------------------- 颜色定义 --------------------
 RED='\033[0;31m'
@@ -204,7 +220,6 @@ show_menu() {
     echo -e "  ${CYAN} a)${NC} 列出所有分支脚本"
     echo -e "  ${CYAN} 0)${NC} 退出"
     sep
-    echo -n "请输入选项: "
 }
 
 #-------------------- 列出所有分支脚本 --------------------
@@ -264,6 +279,7 @@ main() {
 
     while true; do
         show_menu
+        echo -n "请输入选项: "
         read -r choice
         echo ""
         case "$choice" in
