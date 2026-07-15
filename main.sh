@@ -6,11 +6,38 @@
 #       curl -fsSL <RAW_URL>/main.sh | sudo bash  （管道方式也支持交互）
 #=============================================================================
 
-# 管道执行（curl|bash）时 stdin 被脚本内容占用，重定向到终端以支持交互输入
+# 管道执行（curl|bash）时 stdin 被脚本内容占用，需要从终端获取用户输入
 # 交互式菜单脚本不使用 set -e，避免 read 偶发返回非 0 时误退出
-if [[ ! -t 0 ]]; then
-    exec 0</dev/tty
-fi
+# 检查终端可用性，给出友好提示
+check_tty() {
+    if [[ ! -t 0 ]]; then
+        if [[ -c /dev/tty ]]; then
+            exec 0</dev/tty
+        else
+            cat >&2 <<EOF
+===============================================
+错误：当前环境不支持交互模式
+===============================================
+您使用的是管道方式执行（curl|bash），但当前环境无法访问终端。
+
+解决方案：
+1. 使用本地运行方式：
+   git clone https://github.com/sunlintao30/test.git ~/ops-scripts
+   cd ~/ops-scripts && chmod +x *.sh && sudo ./main.sh
+
+2. 或使用支持终端的环境（如 SSH 连接、本地终端）
+
+3. 或使用国内加速地址：
+   curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/sunlintao30/test/main/main.sh | sudo bash
+
+===============================================
+EOF
+            exit 1
+        fi
+    fi
+}
+
+check_tty
 
 #-------------------- 颜色定义 --------------------
 RED='\033[0;31m'
